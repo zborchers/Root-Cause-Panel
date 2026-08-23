@@ -413,61 +413,41 @@ function compilePanelIntake(diagnoses, regions, lifeContext) {
 
 // Token budget for panel generation.
 //
-// This replaces the consumer app's "base covers one issue, flat increment
-// per additional issue" formula, which doesn't fit how the panel is
-// actually structured. That formula assumed a single flowing narrative
-// where a primary issue could carry shared framing and additional issues
-// rode on top of it more cheaply. The panel has no such hierarchy — every
-// one of the seven chakra sections gets written every time, and a flagged
-// chakra gets the same full depth as any other flagged chakra, not more or
-// less depending on whether it was the first thing reported. So the right
-// unit to scale against is "how many of the seven chakras will likely be
-// flagged," not "how many issues were reported" treated as an ordered list.
+// This matches the panel's current structure: one entry per diagnosis, one
+// entry per reported symptom/region, nothing else. There's no fixed section
+// count to work against anymore (no seven-chakra ceiling, no floor cost for
+// unreported material) — a patient with two things reported gets a two-
+// entry panel, a patient with six things reported gets a six-entry panel,
+// and every entry gets the same flat, full-depth treatment regardless of
+// order. That makes the estimate simpler than it was under the chakra-
+// organized structure: entry count is no longer a proxy for something else,
+// it's the actual, exact number of entries the panel will contain.
 //
-// This also has to account for a cost the old formula never had to: even a
-// single-issue panel still writes six quiet-chakra sections, each small but
-// real ("nothing significant surfaces here" is still generated text, not
-// free). That's a genuine floor cost that scales with 7 minus however many
-// chakras end up flagged, independent of how simple the intake was.
-//
-// Flagged-chakra count can only be estimated before generation — a single
-// diagnosis or region doesn't always map to exactly one chakra (see the two-
-// layer autoimmune handling in the system prompt, for instance), and two
-// different reported regions can sometimes land on the same chakra. Using
-// the count of distinct diagnoses + regions as a proxy, capped at seven, is
-// the same kind of reasonable approximation the consumer app already relied
-// on for its own issue-count estimate. Since only actual generated tokens
-// are billed, erring generous on the ceiling costs nothing and protects
-// against a genuinely complex intake getting cut off mid-section.
-function estimateFlaggedChakraCount(diagnoses, regions) {
+// Since only actual generated tokens are billed, erring generous on the
+// ceiling costs nothing and protects a genuinely complex intake (many
+// diagnoses and regions at once) from getting cut off mid-entry.
+function estimateEntryCount(diagnoses, regions) {
   const diagnosisCount = diagnoses.filter(d => d.name.trim()).length;
   const regionCount = regions.length;
-  return Math.min(7, Math.max(1, diagnosisCount + regionCount));
+  return Math.max(1, diagnosisCount + regionCount);
 }
 
 function tokensForPanel(diagnoses, regions) {
-  const flaggedCount = estimateFlaggedChakraCount(diagnoses, regions);
-  const quietCount = 7 - flaggedCount;
+  const entryCount = estimateEntryCount(diagnoses, regions);
 
-  // Opening framing plus the transitions between seven sections.
-  const BASE_OVERHEAD = 500;
-  // Per flagged chakra: real, substantive paragraphs plus a folded-in
-  // guiding question — deliberately generous, since the standard set for
-  // this tool is at least as deep as the original single-issue reading
-  // (which used roughly this much on its own), and ideally more.
-  const TOKENS_PER_FLAGGED_CHAKRA = 2800;
-  // Per quiet chakra: a sentence or two, honestly brief by design.
-  const TOKENS_PER_QUIET_CHAKRA = 150;
-  // Safety ceiling — comfortably above the natural max (all seven flagged
-  // deeply) to leave room for unusually verbose or multi-layered diagnosis
-  // handling, without requesting an unreasonably large ceiling by default.
-  const CEILING = 23000;
+  // Opening framing plus whatever brief connective material ties entries
+  // together, if a real connection between them is actually noted.
+  const BASE_OVERHEAD = 400;
+  // Per entry: real, substantive, clinically direct paragraphs plus a
+  // folded-in guiding question. Generous by design — the standard here is
+  // full depth per entry regardless of how many entries there are.
+  const TOKENS_PER_ENTRY = 2800;
+  // Safety ceiling — no natural cap on entry count anymore (unlike the old
+  // seven-chakra structure), so this exists purely as a backstop against an
+  // unusually large intake, not a value normal use should approach.
+  const CEILING = 30000;
 
-  const estimate = BASE_OVERHEAD
-    + flaggedCount * TOKENS_PER_FLAGGED_CHAKRA
-    + quietCount * TOKENS_PER_QUIET_CHAKRA;
-
-  return Math.min(estimate, CEILING);
+  return Math.min(BASE_OVERHEAD + entryCount * TOKENS_PER_ENTRY, CEILING);
 }
 
 // ---- MAIN INTAKE SCREEN ----
@@ -723,7 +703,7 @@ export default function PanelInterpreter() {
     const compiled = compilePanelIntake(diagnoses, regions, lifeContext);
     const userMsg = {
       role: "user",
-      content: `Here is the intake for a new patient panel:\n\n${compiled}\n\nGenerate the full seven-chakra Energetic Root Cause Panel based on this intake.`,
+      content: `Here is the intake for a new patient panel:\n\n${compiled}\n\nGenerate the full Energetic Root Cause Panel based on this intake.`,
       display: compiled,
       hidden: true,
     };
