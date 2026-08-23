@@ -43,8 +43,68 @@ function ensureHeaderVisible() {
   } catch {}
 }
 
+// Parses panel output into entry blocks. The system prompt guarantees a
+// specific shape: a bold-wrapped paragraph ("**Entry Name**") marks the
+// start of an entry, every paragraph after it belongs to that entry until
+// the next header, and the LAST paragraph of a header'd entry is always the
+// guiding question, on its own paragraph. Content with no headers at all
+// (a follow-up chat answer that isn't itself a formatted panel) is handled
+// too — it just renders as plain paragraphs with no header and no
+// guiding-question styling, since there's no reliable signal for which
+// paragraph, if any, is a question in freeform conversation.
+function parsePanelBlocks(content) {
+  const paragraphs = content.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const headerRe = /^\*\*(.+?)\*\*$/;
+  const blocks = [];
+  let current = null;
+  for (const p of paragraphs) {
+    const m = p.match(headerRe);
+    if (m) {
+      if (current) blocks.push(current);
+      current = { header: m[1], paragraphs: [] };
+    } else {
+      if (!current) current = { header: null, paragraphs: [] };
+      current.paragraphs.push(p);
+    }
+  }
+  if (current) blocks.push(current);
+  return blocks;
+}
+
 function formatMessage(content) {
-  return <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.82 }}>{content}</div>;
+  const blocks = parsePanelBlocks(content);
+  return (
+    <div>
+      {blocks.map((block, bi) => (
+        <div key={bi} style={{ marginBottom: "1.75rem" }}>
+          {block.header && (
+            <div style={{ fontSize: "19px", fontWeight: 700, fontFamily: SANS, color: c.textPrimary, marginBottom: "0.75rem" }}>
+              {block.header}
+            </div>
+          )}
+          {block.paragraphs.map((p, pi) => {
+            const isGuidingQuestion = !!block.header && pi === block.paragraphs.length - 1;
+            if (isGuidingQuestion) {
+              return (
+                <div
+                  key={pi}
+                  style={{ marginTop: "1rem", background: c.accentLight, borderLeft: `3px solid ${c.accent}`, borderRadius: "0 8px 8px 0", padding: "0.85rem 1.1rem" }}
+                >
+                  <div style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: c.accent, marginBottom: "0.35rem", fontFamily: SANS }}>
+                    Worth Exploring
+                  </div>
+                  <div style={{ lineHeight: 1.75, fontStyle: "italic" }}>{p}</div>
+                </div>
+              );
+            }
+            return (
+              <div key={pi} style={{ lineHeight: 1.82, marginBottom: "0.9rem" }}>{p}</div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ---- PRACTICE CONFIG ----
