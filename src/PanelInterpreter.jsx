@@ -501,11 +501,11 @@ function tokensForPanel(diagnoses, regions) {
   // Per entry: real, substantive, clinically direct paragraphs plus a
   // folded-in guiding question. Generous by design — the standard here is
   // full depth per entry regardless of how many entries there are.
-  const TOKENS_PER_ENTRY = 2800;
+  const TOKENS_PER_ENTRY = 3800;
   // Safety ceiling — no natural cap on entry count anymore (unlike the old
   // seven-chakra structure), so this exists purely as a backstop against an
   // unusually large intake, not a value normal use should approach.
-  const CEILING = 30000;
+  const CEILING = 38000;
 
   return Math.min(BASE_OVERHEAD + entryCount * TOKENS_PER_ENTRY, CEILING);
 }
@@ -734,8 +734,43 @@ export default function PanelInterpreter() {
       }),
     });
     const data = await response.json();
-    return data.content?.find(b => b.type === "text")?.text
-      || "Something went wrong. Please try again.";
+    return {
+      text: data.content?.find(b => b.type === "text")?.text || "Something went wrong. Please try again.",
+      stopReason: data.stop_reason || null,
+    };
+  }
+
+  // A response that hits the token ceiling comes back as a normal, successful
+  // API call — stop_reason: "max_tokens" instead of "end_turn" — not an
+  // error. Left unhandled, that means a panel can end mid-sentence with
+  // nothing telling the user, or the code, that anything went wrong; the
+  // partial text just gets displayed as if it were the complete reading.
+  // This is the same bug and the same fix already applied to the consumer
+  // Reading tool after it surfaced there first — this codebase forked
+  // before that fix existed, so it never inherited it. This wraps callAPI
+  // so a truncated response never reaches the screen: it automatically
+  // asks the model to continue exactly where it left off and stitches the
+  // result together, capped at a few rounds as a backstop against a
+  // pathological case that never finishes.
+  async function callAPIWithContinuation(messages, maxTokens) {
+    let combinedText = "";
+    let currentMessages = messages;
+    const maxRounds = 3;
+
+    for (let round = 0; round < maxRounds; round++) {
+      const { text, stopReason } = await callAPI(currentMessages, maxTokens);
+      combinedText += text;
+
+      if (stopReason !== "max_tokens") break;
+
+      currentMessages = [
+        ...currentMessages,
+        { role: "assistant", content: combinedText },
+        { role: "user", content: "Continue exactly where you left off. Do not repeat anything already written, do not restate or re-summarize what's already been said, and do not add any preamble — just continue the sentence or thought directly." },
+      ];
+    }
+
+    return combinedText;
   }
 
   // ---- DIAGNOSES HANDLERS ----
@@ -770,7 +805,7 @@ export default function PanelInterpreter() {
     const newMessages = [userMsg];
     setMessages(newMessages);
     try {
-      const text = await callAPI(newMessages, tokensForPanel(diagnoses, regions));
+      const text = await callAPIWithContinuation(newMessages, tokensForPanel(diagnoses, regions));
       setMessages([...newMessages, { role: "assistant", content: text, isReading: true, readingLabel: "Energetic Root Cause Panel" }]);
       setStep("chat");
     } catch {
@@ -784,7 +819,7 @@ export default function PanelInterpreter() {
     setLoading(true);
     setMessages(newMessages);
     try {
-      const text = await callAPI(newMessages, 8000);
+      const text = await callAPIWithContinuation(newMessages, 8000);
       setMessages(prev => [...prev, { role: "assistant", content: text }]);
     } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "There was a connection error. Please try again." }]);
