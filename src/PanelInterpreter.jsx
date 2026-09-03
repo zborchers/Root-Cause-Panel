@@ -45,12 +45,13 @@ function ensureHeaderVisible() {
 
 // Parses panel output into entry blocks. The system prompt guarantees a
 // specific shape: a bold-wrapped paragraph ("**Entry Name**") marks the
-// start of an entry, and every paragraph after it — all 3 to 4 of them —
-// is one of the entry's questions; there's no interpretive prose mixed in
-// alongside them anymore. Content with no headers at all (a follow-up
-// chat answer that isn't itself a formatted panel) is handled too — it
-// just renders as plain paragraphs with no header and no question
-// styling, since a follow-up answer is normal prose, not a panel entry.
+// start of an entry, the first paragraph after it is a brief one-to-two
+// sentence anchoring statement, and every paragraph after that — 3 to 4
+// of them — is one of the entry's questions. Content with no headers at
+// all (a follow-up chat answer that isn't itself a formatted panel) is
+// handled too — it just renders as plain paragraphs with no header and
+// no question styling, since a follow-up answer is normal prose, not a
+// panel entry.
 function parsePanelBlocks(content) {
   const paragraphs = content.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
   const headerRe = /^\*\*(.+?)\*\*$/;
@@ -82,11 +83,13 @@ function formatMessage(content) {
             </div>
           )}
           {block.paragraphs.map((p, pi) => {
-            // Every paragraph in a headed entry is one of its 3-4
-            // questions — no box styling around them, just plain,
-            // spaced-apart paragraphs so they read as a simple list
-            // rather than a set of highlighted callouts.
-            const isQuestion = !!block.header;
+            // The first paragraph in a headed entry is now the brief,
+            // one-to-two-sentence anchoring statement — normal prose,
+            // not italicized. Every paragraph after that is one of the
+            // entry's 3-4 questions — still no box styling around them,
+            // just plain, spaced-apart paragraphs, italicized to
+            // distinguish them from the opening statement above.
+            const isQuestion = !!block.header && pi > 0;
             return (
               <div key={pi} style={{ lineHeight: 1.82, marginBottom: "0.9rem", fontStyle: isQuestion ? "italic" : "normal" }}>{p}</div>
             );
@@ -495,7 +498,7 @@ function tokensForPanel(diagnoses, regions) {
   // questions actually need, same reasoning as before: only actual
   // generated tokens are billed, so erring generous costs nothing and
   // protects a genuinely complex entry from getting cut off mid-question.
-  const TOKENS_PER_ENTRY = 1100;
+  const TOKENS_PER_ENTRY = 1250;
   // Safety ceiling, scaled down proportionally with TOKENS_PER_ENTRY —
   // still purely a backstop against an unusually large intake, not a
   // value normal use should approach.
