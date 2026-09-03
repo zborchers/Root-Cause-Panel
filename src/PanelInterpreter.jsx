@@ -45,13 +45,12 @@ function ensureHeaderVisible() {
 
 // Parses panel output into entry blocks. The system prompt guarantees a
 // specific shape: a bold-wrapped paragraph ("**Entry Name**") marks the
-// start of an entry, every paragraph after it belongs to that entry until
-// the next header, and the LAST paragraph of a header'd entry is always the
-// guiding question, on its own paragraph. Content with no headers at all
-// (a follow-up chat answer that isn't itself a formatted panel) is handled
-// too — it just renders as plain paragraphs with no header and no
-// guiding-question styling, since there's no reliable signal for which
-// paragraph, if any, is a question in freeform conversation.
+// start of an entry, and every paragraph after it — all 3 to 4 of them —
+// is one of the entry's questions; there's no interpretive prose mixed in
+// alongside them anymore. Content with no headers at all (a follow-up
+// chat answer that isn't itself a formatted panel) is handled too — it
+// just renders as plain paragraphs with no header and no question
+// styling, since a follow-up answer is normal prose, not a panel entry.
 function parsePanelBlocks(content) {
   const paragraphs = content.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
   const headerRe = /^\*\*(.+?)\*\*$/;
@@ -83,16 +82,17 @@ function formatMessage(content) {
             </div>
           )}
           {block.paragraphs.map((p, pi) => {
-            const isGuidingQuestion = !!block.header && pi === block.paragraphs.length - 1;
-            if (isGuidingQuestion) {
+            // Every paragraph in a headed entry is one of its 3-4
+            // questions now — style each one the same way, not just the
+            // last one, since there's no longer any interpretive prose
+            // to distinguish them from within the entry.
+            const isQuestion = !!block.header;
+            if (isQuestion) {
               return (
                 <div
                   key={pi}
-                  style={{ marginTop: "1rem", background: c.accentLight, borderLeft: `3px solid ${c.accent}`, borderRadius: "0 8px 8px 0", padding: "0.85rem 1.1rem" }}
+                  style={{ marginBottom: "0.75rem", background: c.accentLight, borderLeft: `3px solid ${c.accent}`, borderRadius: "0 8px 8px 0", padding: "0.85rem 1.1rem" }}
                 >
-                  <div style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: c.accent, marginBottom: "0.35rem", fontFamily: SANS }}>
-                    Worth Exploring
-                  </div>
                   <div style={{ lineHeight: 1.75, fontStyle: "italic" }}>{p}</div>
                 </div>
               );
@@ -498,14 +498,18 @@ function tokensForPanel(diagnoses, regions) {
   // Opening framing plus whatever brief connective material ties entries
   // together, if a real connection between them is actually noted.
   const BASE_OVERHEAD = 400;
-  // Per entry: real, substantive, clinically direct paragraphs plus a
-  // folded-in guiding question. Generous by design — the standard here is
-  // full depth per entry regardless of how many entries there are.
-  const TOKENS_PER_ENTRY = 3800;
-  // Safety ceiling — no natural cap on entry count anymore (unlike the old
-  // seven-chakra structure), so this exists purely as a backstop against an
-  // unusually large intake, not a value normal use should approach.
-  const CEILING = 38000;
+  // Per entry: 3 to 4 questions, each potentially multi-sentence but none
+  // of them full clinical paragraphs anymore — a set of layered questions
+  // runs meaningfully shorter than the prose-plus-one-question format this
+  // was originally sized for. Still generous relative to what 3-4 real
+  // questions actually need, same reasoning as before: only actual
+  // generated tokens are billed, so erring generous costs nothing and
+  // protects a genuinely complex entry from getting cut off mid-question.
+  const TOKENS_PER_ENTRY = 1100;
+  // Safety ceiling, scaled down proportionally with TOKENS_PER_ENTRY —
+  // still purely a backstop against an unusually large intake, not a
+  // value normal use should approach.
+  const CEILING = 12000;
 
   return Math.min(BASE_OVERHEAD + entryCount * TOKENS_PER_ENTRY, CEILING);
 }
