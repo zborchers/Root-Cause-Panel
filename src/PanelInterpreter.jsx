@@ -83,22 +83,12 @@ function formatMessage(content) {
           )}
           {block.paragraphs.map((p, pi) => {
             // Every paragraph in a headed entry is one of its 3-4
-            // questions now — style each one the same way, not just the
-            // last one, since there's no longer any interpretive prose
-            // to distinguish them from within the entry.
+            // questions — no box styling around them, just plain,
+            // spaced-apart paragraphs so they read as a simple list
+            // rather than a set of highlighted callouts.
             const isQuestion = !!block.header;
-            if (isQuestion) {
-              return (
-                <div
-                  key={pi}
-                  style={{ marginBottom: "0.75rem", background: c.accentLight, borderLeft: `3px solid ${c.accent}`, borderRadius: "0 8px 8px 0", padding: "0.85rem 1.1rem" }}
-                >
-                  <div style={{ lineHeight: 1.75, fontStyle: "italic" }}>{p}</div>
-                </div>
-              );
-            }
             return (
-              <div key={pi} style={{ lineHeight: 1.82, marginBottom: "0.9rem" }}>{p}</div>
+              <div key={pi} style={{ lineHeight: 1.82, marginBottom: "0.9rem", fontStyle: isQuestion ? "italic" : "normal" }}>{p}</div>
             );
           })}
         </div>
